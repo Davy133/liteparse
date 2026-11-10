@@ -1,0 +1,42 @@
+name: Release - LODE wheel
+
+on:
+  push:
+    tags:
+      - "lode-*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage pdfium for wheel inclusion
+        run: bash packages/python/scripts/download-pdfium.sh x86_64-unknown-linux-gnu
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          args: --release --out dist
+          manylinux: 2_28
+          working-directory: packages/python
+          before-script-linux: |
+            yum install -y tesseract-devel leptonica-devel openssl-devel pkgconfig perl-IPC-Cmd || true
+
+      - name: Smoke test
+        run: |
+          docker run --rm -v "$PWD/packages/python/dist":/dist python:3.12-slim-bookworm bash -c '
+            pip install /dist/*.whl &&
+            python -c "from liteparse import LiteParse; p = LiteParse(ocr_trigger_reasons=[\"scanned\", \"no-text\", \"garbled\"]); assert p.get_config().ocr_trigger_reasons == [\"scanned\", \"no-text\", \"garbled\"]"'
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/python/dist/*.whl --title "$GITHUB_REF_NAME" --notes "LiteParse wheel for LODE, built from $GITHUB_SHA."
