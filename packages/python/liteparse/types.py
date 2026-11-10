@@ -493,6 +493,8 @@ class LiteParseConfig:
     extract_images: bool = False
     extract_vector_graphics: bool = False
     extract_xfa_packets: bool = False
+    #: Complexity reasons that send a page to OCR; ``None`` means any reason.
+    ocr_trigger_reasons: Optional[List[str]] = None
     extract_document_metadata: bool = False
     detect_screenshot_rects: bool = False
     extract_content_bounds: bool = False

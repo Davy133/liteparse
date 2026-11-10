@@ -103,6 +103,10 @@ pub struct OcrRenderOptions {
     /// `Some` renders exactly these pages, whatever the scoring says, so a
     /// caller with its own routing can override it.
     pub selection: Option<HashSet<u32>>,
+    /// Complexity reasons allowed to send a page to OCR when `selection` is
+    /// `None`. `None` keeps the default: any reason triggers OCR. `Some`
+    /// renders only pages flagged with at least one of these reasons.
+    pub trigger_reasons: Option<Vec<ComplexityReason>>,
 }
 
 impl Default for OcrRenderOptions {
@@ -115,6 +119,7 @@ impl Default for OcrRenderOptions {
             continue_on_page_error: false,
             reflatten_pages: HashSet::new(),
             selection: None,
+            trigger_reasons: None,
         }
     }
 }
@@ -373,6 +378,17 @@ pub enum ComplexityReason {
 }
 
 impl ComplexityReason {
+    pub const ALL: [ComplexityReason; 8] = [
+        ComplexityReason::Scanned,
+        ComplexityReason::NoText,
+        ComplexityReason::SparseText,
+        ComplexityReason::EmbeddedImages,
+        ComplexityReason::Garbled,
+        ComplexityReason::VectorText,
+        ComplexityReason::AnnotationText,
+        ComplexityReason::InvisibleTextLayer,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             ComplexityReason::Scanned => "scanned",
@@ -384,6 +400,35 @@ impl ComplexityReason {
             ComplexityReason::AnnotationText => "annotation-text",
             ComplexityReason::InvisibleTextLayer => "invisible-text-layer",
         }
+    }
+}
+
+impl std::str::FromStr for ComplexityReason {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|reason| reason.as_str() == s)
+            .ok_or_else(|| {
+                let known: Vec<&str> = Self::ALL.iter().map(|r| r.as_str()).collect();
+                format!(
+                    "unknown complexity reason '{s}' (expected one of: {})",
+                    known.join(", ")
+                )
+            })
+    }
+}
+
+/// Whether a page flagged with `reasons` goes to OCR. With no
+/// `trigger_reasons` any reason does; otherwise one of them must match.
+pub(crate) fn ocr_triggered(
+    reasons: &[ComplexityReason],
+    trigger_reasons: Option<&[ComplexityReason]>,
+) -> bool {
+    match trigger_reasons {
+        None => !reasons.is_empty(),
+        Some(allowed) => reasons.iter().any(|reason| allowed.contains(reason)),
     }
 }
 
@@ -979,6 +1024,7 @@ pub(crate) fn render_pages_for_ocr_capped(
         continue_on_page_error,
         reflatten_pages: flatten_page_numbers,
         selection,
+        trigger_reasons,
     } = options;
     let (dpi, grayscale, render_form_fields, continue_on_page_error) = (
         *dpi,
@@ -1034,7 +1080,7 @@ pub(crate) fn render_pages_for_ocr_capped(
                 }
                 None => {
                     let page_complexity = calculate_page_complexity(page, &page_obj)?;
-                    if !page_complexity.needs_ocr {
+                    if !ocr_triggered(&page_complexity.reasons, trigger_reasons.as_deref()) {
                         return Ok(None);
                     }
                     replace_native = page_complexity
@@ -2256,6 +2302,34 @@ fn clean_ocr_table_artifacts(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::types::Rect;
+
+    #[test]
+    fn ocr_triggered_without_trigger_reasons_accepts_any_reason() {
+        assert!(ocr_triggered(&[ComplexityReason::EmbeddedImages], None));
+        assert!(!ocr_triggered(&[], None));
+    }
+
+    #[test]
+    fn ocr_triggered_with_trigger_reasons_requires_a_match() {
+        let allowed = [ComplexityReason::Scanned, ComplexityReason::NoText];
+        assert!(!ocr_triggered(
+            &[ComplexityReason::EmbeddedImages],
+            Some(&allowed)
+        ));
+        assert!(ocr_triggered(
+            &[ComplexityReason::EmbeddedImages, ComplexityReason::NoText],
+            Some(&allowed)
+        ));
+        assert!(!ocr_triggered(&[], Some(&allowed)));
+    }
+
+    #[test]
+    fn complexity_reason_round_trips_through_its_name() {
+        for reason in ComplexityReason::ALL {
+            assert_eq!(reason.as_str().parse::<ComplexityReason>(), Ok(reason));
+        }
+        assert!("logos".parse::<ComplexityReason>().is_err());
+    }
 
     #[test]
     fn malformed_tokens_flag_cipher_and_legacy_fonts() {

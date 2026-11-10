@@ -410,6 +410,7 @@ impl LiteParse {
             continue_on_page_error: self.config.continue_on_page_error,
             reflatten_pages,
             selection: None,
+            trigger_reasons: self.config.ocr_trigger_reasons.clone(),
         }
     }
 

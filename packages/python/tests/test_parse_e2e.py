@@ -110,6 +110,17 @@ class TestParseOptions:
         with pytest.raises(ValueError, match="invalid output_format: yaml"):
             LiteParse(output_format="yaml")
 
+    def test_ocr_trigger_reasons_reach_config(self):
+        parser = LiteParse(ocr_trigger_reasons=["scanned", "no-text", "garbled"])
+        assert parser.get_config().ocr_trigger_reasons == ["scanned", "no-text", "garbled"]
+
+    def test_ocr_trigger_reasons_default_to_any_reason(self, parser: LiteParse):
+        assert parser.get_config().ocr_trigger_reasons is None
+
+    def test_unknown_ocr_trigger_reason(self):
+        with pytest.raises(ValueError, match="unknown complexity reason 'logos'"):
+            LiteParse(ocr_trigger_reasons=["logos"])
+
     def test_target_pages(self, parser: LiteParse, invoice_pdf: Path):
         # invoice.pdf has 2 pages — parse only page 1
         result = parser.parse(invoice_pdf, ocr_enabled=False, target_pages="1")

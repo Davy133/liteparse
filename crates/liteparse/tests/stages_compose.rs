@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use liteparse::config::{CropBox, ImageMode, OutputFormat, PageOrientationCorrection};
 use liteparse::ocr::{OcrEngine, OcrOptions, OcrResult};
-use liteparse::stages::{self, Library};
+use liteparse::stages::{self, ComplexityReason, Library};
 use liteparse::types::{Page, ParsedPage, PdfInput};
 use liteparse::{LiteParse, LiteParseConfig, ParseResult};
 use serial_test::serial;
@@ -651,6 +651,50 @@ async fn render_for_ocr_selection_overrides_complexity_gate() {
     // The raster's pixels survive the boundary as base64, not a number array.
     let json = serde_json::to_value(&rasters[0]).unwrap();
     assert!(json["pixels"].is_string());
+}
+
+/// `trigger_reasons` narrows the complexity gate: a page flagged only for
+/// reasons outside the set is not rastered, one flagged for a listed reason is.
+#[tokio::test]
+#[serial]
+async fn render_for_ocr_trigger_reasons_narrow_complexity_gate() {
+    let parser = LiteParse::new(everything_config());
+    let lib = Library::init();
+    let document = stages::open(
+        &lib,
+        &PdfInput::Path(fixture("annotation_text.pdf")),
+        None,
+        &[],
+    )
+    .unwrap();
+    let pages = stages::extract(&document, &parser.extract_request(None, usize::MAX))
+        .unwrap()
+        .pages;
+    let rendered_with = |trigger_reasons: Option<Vec<ComplexityReason>>| {
+        let options = stages::OcrRenderOptions {
+            trigger_reasons,
+            ..stages::OcrRenderOptions::default()
+        };
+        stages::render_for_ocr(&document, &pages, 0, &options)
+            .unwrap()
+            .0
+            .len()
+    };
+    assert!(
+        rendered_with(None) > 0,
+        "annotation_text.pdf should need OCR"
+    );
+    assert_eq!(
+        rendered_with(Some(vec![ComplexityReason::EmbeddedImages])),
+        0
+    );
+    assert_eq!(
+        rendered_with(Some(vec![
+            ComplexityReason::NoText,
+            ComplexityReason::Scanned
+        ])),
+        rendered_with(None)
+    );
 }
 
 /// A hand-built outcome for a page that is not being merged is an error,

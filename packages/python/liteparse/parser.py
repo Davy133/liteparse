@@ -500,6 +500,7 @@ class LiteParse:
         extract_text_metadata: Optional[bool] = None,
         crop_box: Optional[Tuple[float, float, float, float]] = None,
         skip_diagonal_text: Optional[bool] = None,
+        ocr_trigger_reasons: Optional[List[str]] = None,
         page_orientation_corrections: Optional[List[Tuple[int, int]]] = None,
         include_complexity: Optional[bool] = None,
         extract_vector_graphics: Optional[bool] = None,
@@ -577,6 +578,14 @@ class LiteParse:
             skip_diagonal_text: Drop diagonal text — items whose rotation is
                 more than 2° off the nearest right angle (0/90/180/270).
                 Default False. Use to exclude rotated watermarks/stamps.
+            ocr_trigger_reasons: Complexity reasons that send a page to OCR,
+                from ``"scanned"``, ``"no-text"``, ``"sparse-text"``,
+                ``"embedded-images"``, ``"garbled"``, ``"vector-text"``,
+                ``"annotation-text"`` and ``"invisible-text-layer"``. None
+                (default) OCRs a page flagged with any reason. A list
+                restricts OCR to pages flagged with at least one of them, e.g.
+                ``["scanned", "no-text", "garbled"]`` keeps born-digital pages
+                with logos or figures on the native-text path.
             page_orientation_corrections: Per-page orientation corrections
                 from an upstream orientation classifier, as ``(page, angle)``
                 pairs: the 1-based page and the clockwise degrees (0, 90, 180
@@ -670,6 +679,8 @@ class LiteParse:
             kwargs["crop_box"] = crop_box
         if skip_diagonal_text is not None:
             kwargs["skip_diagonal_text"] = skip_diagonal_text
+        if ocr_trigger_reasons is not None:
+            kwargs["ocr_trigger_reasons"] = list(ocr_trigger_reasons)
         if page_orientation_corrections is not None:
             kwargs["page_orientation_corrections"] = [
                 (int(page), int(angle)) for page, angle in page_orientation_corrections
@@ -988,6 +999,9 @@ class LiteParse:
             emit_word_boxes=cfg.emit_word_boxes,
             crop_box=cfg.crop_box,
             skip_diagonal_text=cfg.skip_diagonal_text,
+            ocr_trigger_reasons=(
+                None if cfg.ocr_trigger_reasons is None else list(cfg.ocr_trigger_reasons)
+            ),
             page_orientation_corrections=list(cfg.page_orientation_corrections),
             include_complexity=cfg.include_complexity,
             extract_text_metadata=cfg.extract_text_metadata,

@@ -154,6 +154,12 @@ pub struct LiteParseConfig {
     /// Drop diagonal (skewed) text — items whose rotation is more than 2°
     /// off the nearest right angle (0/90/180/270). Default `false`.
     pub skip_diagonal_text: bool,
+    /// Complexity reasons that send a page to OCR. `None` (default) OCRs a
+    /// page flagged with any reason. `Some` restricts OCR to pages flagged
+    /// with at least one of these, e.g. `[Scanned, NoText, Garbled]` keeps
+    /// born-digital pages with logos or figures on the native-text path.
+    #[serde(default)]
+    pub ocr_trigger_reasons: Option<Vec<crate::ocr_merge::ComplexityReason>>,
     /// Per-page orientation corrections supplied by the caller, e.g. from an
     /// upstream orientation classifier that saw the rendered page. Each entry
     /// names a 1-based page and the clockwise angle (0/90/180/270) by which
@@ -322,6 +328,7 @@ impl Default for LiteParseConfig {
             extract_text_metadata: false,
             crop_box: None,
             skip_diagonal_text: false,
+            ocr_trigger_reasons: None,
             page_orientation_corrections: Vec::new(),
             include_complexity: false,
             extract_vector_graphics: false,
